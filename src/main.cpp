@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <ctime>
+#include <numeric>
 #include <vector>
 #include <SFML/Graphics.hpp>
 
