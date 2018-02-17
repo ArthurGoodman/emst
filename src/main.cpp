@@ -12,16 +12,12 @@ namespace {
 constexpr std::size_t c_window_width = 1280;
 constexpr std::size_t c_window_height = 720;
 
-constexpr std::size_t c_vertex_count = 100;
-constexpr float c_vertex_radius = 2.5;
+constexpr std::size_t c_generated_vertex_count = 100;
+constexpr float c_vertex_shape_radius = 2.5;
 
 class Vertex final
 {
 public: // methods
-    Vertex()
-    {
-    }
-
     Vertex(float x, float y, std::size_t index = 0)
         : m_point(x, y)
         , m_index(index)
@@ -61,24 +57,12 @@ private: // fields
 class Edge final
 {
 public: // methods
-    Edge()
-    {
-    }
-
     Edge(const Vertex &p1, const Vertex &p2)
         : p1(p1)
         , p2(p2)
         , is_bad(false)
     {
         calculateWeight();
-    }
-
-    Edge(const Edge &edge)
-        : p1(edge.p1)
-        , p2(edge.p2)
-        , is_bad(false)
-        , weight(edge.weight)
-    {
     }
 
     bool operator==(const Edge &edge) const
@@ -177,224 +161,290 @@ public: // fields
     bool is_bad;
 };
 
-std::vector<Vertex> vertices;
-std::size_t vertex_counter = 0;
-
-void generateVertices()
+class Algo final
 {
-    for (std::size_t i = 0; i < c_vertex_count; i++)
+public: // methods
+    void generateVertices(std::size_t count)
     {
-        vertices.emplace_back(Vertex(
-            static_cast<double>(std::rand()) / RAND_MAX * c_window_width,
-            static_cast<double>(std::rand()) / RAND_MAX * c_window_height,
-            vertex_counter++));
-    }
-}
-
-std::vector<Triangle> triangulate(const std::vector<Vertex> &vertices)
-{
-    if (vertices.empty())
-    {
-        return {};
-    }
-
-    std::vector<Triangle> triangles;
-
-    // Determinate the super triangle
-    float minX = vertices[0].x();
-    float minY = vertices[0].y();
-    float maxX = minX;
-    float maxY = minY;
-
-    for (std::size_t i = 0; i < vertices.size(); ++i)
-    {
-        if (vertices[i].x() < minX)
-            minX = vertices[i].x();
-        if (vertices[i].y() < minY)
-            minY = vertices[i].y();
-        if (vertices[i].x() > maxX)
-            maxX = vertices[i].x();
-        if (vertices[i].y() > maxY)
-            maxY = vertices[i].y();
-    }
-
-    float dx = maxX - minX;
-    float dy = maxY - minY;
-    float deltaMax = std::max(dx, dy);
-    float midx = (minX + maxX) / 2.f;
-    float midy = (minY + maxY) / 2.f;
-
-    ///@ HERE!!!
-    Vertex p1(midx - 20 * deltaMax, midy - deltaMax);
-    Vertex p2(midx, midy + 20 * deltaMax);
-    Vertex p3(midx + 20 * deltaMax, midy - deltaMax);
-
-    // Create a list of triangles, and add the supertriangle in it
-    triangles.push_back(Triangle(p1, p2, p3));
-
-    for (auto p = std::begin(vertices); p != std::end(vertices); p++)
-    {
-        std::vector<Edge> polygon;
-
-        for (auto t = std::begin(triangles); t != std::end(triangles); t++)
+        for (std::size_t i = 0; i < count; i++)
         {
-            if (t->circumCircleContains(*p))
+            vertices.emplace_back(
+                static_cast<double>(std::rand()) / RAND_MAX * c_window_width,
+                static_cast<double>(std::rand()) / RAND_MAX * c_window_height,
+                vertex_counter++);
+        }
+    }
+
+    void addVertex(float x, float y)
+    {
+        vertices.emplace_back(x, y, vertex_counter++);
+    }
+
+    // Bowyer–Watson algorithm
+    std::vector<Triangle> triangulate(const std::vector<Vertex> &vertices)
+    {
+        if (vertices.size() < 3)
+        {
+            return {};
+        }
+
+        std::vector<Triangle> triangles;
+
+        // Determinate the super triangle
+        float minX = vertices[0].x();
+        float minY = vertices[0].y();
+        float maxX = minX;
+        float maxY = minY;
+
+        for (std::size_t i = 0; i < vertices.size(); ++i)
+        {
+            if (vertices[i].x() < minX)
+                minX = vertices[i].x();
+            if (vertices[i].y() < minY)
+                minY = vertices[i].y();
+            if (vertices[i].x() > maxX)
+                maxX = vertices[i].x();
+            if (vertices[i].y() > maxY)
+                maxY = vertices[i].y();
+        }
+
+        float dx = maxX - minX;
+        float dy = maxY - minY;
+        float deltaMax = std::max(dx, dy);
+        float midx = (minX + maxX) / 2.f;
+        float midy = (minY + maxY) / 2.f;
+
+        Vertex p1(midx - 20 * deltaMax, midy - deltaMax);
+        Vertex p2(midx, midy + 20 * deltaMax);
+        Vertex p3(midx + 20 * deltaMax, midy - deltaMax);
+
+        // Create a list of triangles, and add the supertriangle in it
+        triangles.emplace_back(p1, p2, p3);
+
+        for (auto p = std::begin(vertices); p != std::end(vertices); p++)
+        {
+            std::vector<Edge> polygon;
+
+            for (auto t = std::begin(triangles); t != std::end(triangles); t++)
             {
-                t->is_bad = true;
-                polygon.push_back(t->e1);
-                polygon.push_back(t->e2);
-                polygon.push_back(t->e3);
+                if (t->circumCircleContains(*p))
+                {
+                    t->is_bad = true;
+                    polygon.emplace_back(t->e1);
+                    polygon.emplace_back(t->e2);
+                    polygon.emplace_back(t->e3);
+                }
+                else
+                {
+                }
             }
-            else
+
+            triangles.erase(
+                std::remove_if(
+                    begin(triangles),
+                    end(triangles),
+                    [](Triangle &t) { return t.is_bad; }),
+                end(triangles));
+
+            for (auto e1 = std::begin(polygon); e1 != std::end(polygon); e1++)
             {
+                for (auto e2 = std::begin(polygon); e2 != std::end(polygon);
+                     e2++)
+                {
+                    if (e1 == e2)
+                        continue;
+
+                    if (*e1 == *e2)
+                    {
+                        e1->is_bad = true;
+                        e2->is_bad = true;
+                    }
+                }
             }
+
+            polygon.erase(
+                std::remove_if(
+                    begin(polygon),
+                    end(polygon),
+                    [](Edge &e) { return e.is_bad; }),
+                end(polygon));
+
+            for (auto e = std::begin(polygon); e != std::end(polygon); e++)
+                triangles.emplace_back(e->p1, e->p2, *p);
         }
 
         triangles.erase(
             std::remove_if(
                 begin(triangles),
                 end(triangles),
-                [](Triangle &t) { return t.is_bad; }),
+                [p1, p2, p3](Triangle &t) {
+                    return t.containsVertex(p1) || t.containsVertex(p2) ||
+                           t.containsVertex(p3);
+                }),
             end(triangles));
 
-        for (auto e1 = std::begin(polygon); e1 != std::end(polygon); e1++)
-        {
-            for (auto e2 = std::begin(polygon); e2 != std::end(polygon); e2++)
-            {
-                if (e1 == e2)
-                    continue;
+        return triangles;
+    }
 
-                if (*e1 == *e2)
-                {
-                    e1->is_bad = true;
-                    e2->is_bad = true;
-                }
+    std::vector<Edge> decomposeTrianglesIntoEdges(
+        const std::vector<Triangle> &triangles)
+    {
+        std::vector<Edge> edges;
+
+        for (auto t = begin(triangles); t != end(triangles); t++)
+        {
+            edges.emplace_back(t->e1);
+            edges.emplace_back(t->e2);
+            edges.emplace_back(t->e3);
+        }
+
+        return edges;
+    }
+
+    class DisjointSets final
+    {
+    public: // methods
+        explicit DisjointSets(int n)
+            : n{n}
+        {
+            parent.resize(n + 1);
+            rnk.resize(n + 1);
+
+            std::fill(rnk.begin(), rnk.end(), 0);
+            std::iota(parent.begin(), parent.end(), 0);
+        }
+
+        // Find the parent of a node 'u'
+        // Path Compression
+        int find(int u)
+        {
+            /* Make the parent of the nodes in the path
+               from u--> parent[u] point to parent[u] */
+            if (u != parent[u])
+            {
+                parent[u] = find(parent[u]);
+            }
+            return parent[u];
+        }
+
+        // Union by rank
+        void merge(int x, int y)
+        {
+            x = find(x);
+            y = find(y);
+
+            /* Make tree with smaller height
+               a subtree of the other tree  */
+            if (rnk[x] > rnk[y])
+                parent[y] = x;
+            else // If rnk[x] <= rnk[y]
+                parent[x] = y;
+
+            if (rnk[x] == rnk[y])
+                rnk[y]++;
+        }
+
+    private: // fields
+        std::vector<int> parent;
+        std::vector<int> rnk;
+
+        int n;
+    };
+
+    // Kruskal's algorithm
+    std::vector<Edge> findEuclideanMinimalSpanningTree(
+        const std::vector<Edge> &unsorted_edges)
+    {
+        std::vector<Edge> edges = unsorted_edges;
+
+        // Sort edges in increasing order on basis of cost
+        std::sort(edges.begin(), edges.end());
+
+        // Create disjoint sets
+        DisjointSets ds(vertices.size());
+
+        std::vector<Edge> tree;
+
+        // Iterate through all sorted edges
+        for (const Edge &edge : edges)
+        {
+            int u = edge.p1.index();
+            int v = edge.p2.index();
+
+            int set_u = ds.find(u);
+            int set_v = ds.find(v);
+
+            // Check if the selected edge is creating
+            // a cycle or not (Cycle is created if u
+            // and v belong to same set)
+            if (set_u != set_v)
+            {
+                tree.emplace_back(edge);
+
+                // Merge two sets
+                ds.merge(set_u, set_v);
             }
         }
 
-        polygon.erase(
-            std::remove_if(
-                begin(polygon), end(polygon), [](Edge &e) { return e.is_bad; }),
-            end(polygon));
-
-        for (auto e = std::begin(polygon); e != std::end(polygon); e++)
-            triangles.push_back(Triangle(e->p1, e->p2, *p));
+        return tree;
     }
 
-    triangles.erase(
-        std::remove_if(
-            begin(triangles),
-            end(triangles),
-            [p1, p2, p3](Triangle &t) {
-                return t.containsVertex(p1) || t.containsVertex(p2) ||
-                       t.containsVertex(p3);
-            }),
-        end(triangles));
-
-    return triangles;
-}
-
-std::vector<Edge> decomposeTrianglesIntoEdges(
-    const std::vector<Triangle> &triangles)
-{
-    std::vector<Edge> edges;
-
-    for (auto t = begin(triangles); t != end(triangles); t++)
+    void compute()
     {
-        edges.push_back(t->e1);
-        edges.push_back(t->e2);
-        edges.push_back(t->e3);
-    }
+        edges_vertex_buffer.clear();
 
-    return edges;
-}
+        std::vector<Triangle> triangles = triangulate(vertices);
 
-class DisjointSets final
-{
-public: // methods
-    explicit DisjointSets(int n)
-        : n{n}
-    {
-        parent.resize(n + 1);
-        rnk.resize(n + 1);
+        std::vector<Edge> edges = decomposeTrianglesIntoEdges(triangles);
 
-        std::fill(rnk.begin(), rnk.end(), 0);
-        std::iota(parent.begin(), parent.end(), 0);
-    }
-
-    // Find the parent of a node 'u'
-    // Path Compression
-    int find(int u)
-    {
-        /* Make the parent of the nodes in the path
-           from u--> parent[u] point to parent[u] */
-        if (u != parent[u])
+        if (edges.empty() && vertices.size() == 2)
         {
-            parent[u] = find(parent[u]);
+            edges.emplace_back(vertices[0], vertices[1]);
         }
-        return parent[u];
+
+        sf::Color graph_color(175, 175, 175);
+
+        for (const Edge &edge : edges)
+        {
+            edges_vertex_buffer.emplace_back(sf::Vertex(edge.p1.point()));
+            edges_vertex_buffer.back().color = graph_color;
+            edges_vertex_buffer.emplace_back(sf::Vertex(edge.p2.point()));
+            edges_vertex_buffer.back().color = graph_color;
+        }
+
+        std::vector<Edge> emst_edges = findEuclideanMinimalSpanningTree(edges);
+
+        for (const Edge &edge : emst_edges)
+        {
+            edges_vertex_buffer.emplace_back(sf::Vertex(edge.p1.point()));
+            edges_vertex_buffer.back().color = sf::Color::Black;
+            edges_vertex_buffer.emplace_back(sf::Vertex(edge.p2.point()));
+            edges_vertex_buffer.back().color = sf::Color::Black;
+        }
     }
 
-    // Union by rank
-    void merge(int x, int y)
+    void reset()
     {
-        x = find(x);
-        y = find(y);
+        vertex_counter = 0;
+        vertices.clear();
+        edges_vertex_buffer.clear();
+    }
 
-        /* Make tree with smaller height
-           a subtree of the other tree  */
-        if (rnk[x] > rnk[y])
-            parent[y] = x;
-        else // If rnk[x] <= rnk[y]
-            parent[x] = y;
+    const std::vector<Vertex> &getVertices() const
+    {
+        return vertices;
+    }
 
-        if (rnk[x] == rnk[y])
-            rnk[y]++;
+    const std::vector<sf::Vertex> &getEdgesVertexBuffer() const
+    {
+        return edges_vertex_buffer;
     }
 
 private: // fields
-    std::vector<int> parent;
-    std::vector<int> rnk;
-
-    int n;
+    std::vector<Vertex> vertices;
+    std::vector<sf::Vertex> edges_vertex_buffer;
+    std::size_t vertex_counter = 0;
 };
-
-std::vector<Edge> findEuclideanMinimalSpanningTree(
-    const std::vector<Edge> &unsorted_edges)
-{
-    std::vector<Edge> edges = unsorted_edges;
-
-    // Sort edges in increasing order on basis of cost
-    std::sort(edges.begin(), edges.end());
-
-    // Create disjoint sets
-    DisjointSets ds(vertices.size());
-
-    std::vector<Edge> tree;
-
-    // Iterate through all sorted edges
-    for (const Edge &edge : edges)
-    {
-        int u = edge.p1.index();
-        int v = edge.p2.index();
-
-        int set_u = ds.find(u);
-        int set_v = ds.find(v);
-
-        // Check if the selected edge is creating
-        // a cycle or not (Cycle is created if u
-        // and v belong to same set)
-        if (set_u != set_v)
-        {
-            tree.push_back(edge);
-
-            // Merge two sets
-            ds.merge(set_u, set_v);
-        }
-    }
-
-    return tree;
-}
 
 } // namespace
 
@@ -409,16 +459,16 @@ int main()
     sf::RenderWindow window(
         video_mode, "EMST", sf::Style::Default, context_settings);
 
-    sf::CircleShape vertex_shape(c_vertex_radius);
+    sf::CircleShape vertex_shape(c_vertex_shape_radius);
     vertex_shape.setFillColor(sf::Color::Red);
     vertex_shape.setOutlineThickness(0.75);
     vertex_shape.setOutlineColor(sf::Color::Black);
 
-    std::vector<sf::Vertex> edges_vertex_buffer;
-
     window.setPosition(sf::Vector2i(
         (sf::VideoMode::getDesktopMode().width - video_mode.width) / 2,
         (sf::VideoMode::getDesktopMode().height - video_mode.height) / 2));
+
+    Algo algo;
 
     while (window.isOpen())
     {
@@ -437,53 +487,26 @@ int main()
                 }
                 else if (event.key.code == sf::Keyboard::Space)
                 {
-                    generateVertices();
+                    algo.generateVertices(c_generated_vertex_count);
                 }
                 else if (event.key.code == sf::Keyboard::G)
                 {
-                    edges_vertex_buffer.clear();
-
-                    std::vector<Triangle> triangles = triangulate(vertices);
-
-                    std::vector<Edge> edges =
-                        decomposeTrianglesIntoEdges(triangles);
-
-                    sf::Color graph_color(175, 175, 175);
-
-                    for (const Edge &edge : edges)
-                    {
-                        edges_vertex_buffer.emplace_back(
-                            sf::Vertex(edge.p1.point()));
-                        edges_vertex_buffer.back().color = graph_color;
-                        edges_vertex_buffer.emplace_back(
-                            sf::Vertex(edge.p2.point()));
-                        edges_vertex_buffer.back().color = graph_color;
-                    }
-
-                    std::vector<Edge> emst_edges =
-                        findEuclideanMinimalSpanningTree(edges);
-
-                    for (const Edge &edge : emst_edges)
-                    {
-                        edges_vertex_buffer.emplace_back(
-                            sf::Vertex(edge.p1.point()));
-                        edges_vertex_buffer.back().color = sf::Color::Black;
-                        edges_vertex_buffer.emplace_back(
-                            sf::Vertex(edge.p2.point()));
-                        edges_vertex_buffer.back().color = sf::Color::Black;
-                    }
+                    algo.compute();
+                }
+                else if (event.key.code == sf::Keyboard::BackSpace)
+                {
+                    algo.reset();
                 }
             }
             else if (event.type == sf::Event::MouseButtonPressed)
             {
                 if (event.mouseButton.button == sf::Mouse::Left)
                 {
-                    vertices.emplace_back(Vertex(
+                    algo.addVertex(
                         static_cast<float>(event.mouseButton.x) /
                             window.getSize().x * c_window_width,
                         static_cast<float>(event.mouseButton.y) /
-                            window.getSize().y * c_window_height,
-                        vertex_counter++));
+                            window.getSize().y * c_window_height);
                 }
             }
         }
@@ -491,13 +514,15 @@ int main()
         window.clear(sf::Color{200, 200, 200});
 
         window.draw(
-            edges_vertex_buffer.data(), edges_vertex_buffer.size(), sf::Lines);
+            algo.getEdgesVertexBuffer().data(),
+            algo.getEdgesVertexBuffer().size(),
+            sf::Lines);
 
-        for (const Vertex &vertex : vertices)
+        for (const Vertex &vertex : algo.getVertices())
         {
             vertex_shape.setPosition(
                 vertex.point() -
-                sf::Vector2f(c_vertex_radius, c_vertex_radius));
+                sf::Vector2f(c_vertex_shape_radius, c_vertex_shape_radius));
             window.draw(vertex_shape);
         }
 
